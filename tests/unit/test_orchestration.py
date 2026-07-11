@@ -109,3 +109,45 @@ async def test_structured_error_scraping() -> None:
     assert isinstance(res, CalendarEventList)
     assert res.error == "MockCityNotSupported"
     assert "only supported for 'Seattle' or 'Phoenix'" in res.recovery_instruction
+
+
+@pytest.mark.asyncio
+async def test_pii_redaction() -> None:
+    # 6. Verify PII Redaction filters
+    from unittest.mock import patch
+    with patch('google.auth.default', return_value=(None, 'mock-project')), \
+         patch('google.cloud.logging.Client'):
+        from app.fast_api_app import redact_pii
+        
+    assert redact_pii("Contact me at user@domain.com") == "Contact me at [REDACTED_EMAIL]"
+    assert redact_pii("Phone is +1-555-019-2834") == "Phone is [REDACTED_PHONE]"
+    assert redact_pii("My SSN is 000-12-3456") == "My SSN is [REDACTED_SSN]"
+    assert redact_pii("Card: 1234 5678 1234 5678") == "Card: [REDACTED_CARD]"
+
+
+@pytest.mark.asyncio
+async def test_feedback_logging_redaction() -> None:
+    # 7. Verify collect_feedback endpoint redacts PII and populates intent/outcome
+    from unittest.mock import patch, MagicMock
+    with patch('app.fast_api_app.logger') as mock_logger:
+        from app.fast_api_app import collect_feedback
+        from app.app_utils.typing import Feedback
+        
+        fb = Feedback(
+            score=5,
+            text="Loved it! Reach me at customer@gmail.com or 555-123-4567.",
+            intent="Plan a trip to Seattle.",
+            outcome="Itinerary with Pike Place. My SSN is 111-22-3333.",
+            session_id="dummy-session"
+        )
+        
+        res = collect_feedback(fb)
+        assert res["status"] == "success"
+        
+        # Verify log_struct was called with redacted values
+        mock_logger.log_struct.assert_called_once()
+        logged_payload = mock_logger.log_struct.call_args[0][0]
+        
+        assert logged_payload["text"] == "Loved it! Reach me at [REDACTED_EMAIL] or [REDACTED_PHONE]."
+        assert logged_payload["intent"] == "Plan a trip to Seattle."
+        assert logged_payload["outcome"] == "Itinerary with Pike Place. My SSN is [REDACTED_SSN]."

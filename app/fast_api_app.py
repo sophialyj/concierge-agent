@@ -14,6 +14,7 @@
 
 import contextlib
 import os
+import re
 from collections.abc import AsyncIterator
 
 import google.auth
@@ -94,17 +95,85 @@ app.description = "API for interacting with the Agent concierge-agent"
 attach_reasoning_engine_routes(app)
 
 
+def redact_pii(text: str) -> str:
+    """Sanitize text to redact common PII formats (emails, phone numbers, SSNs, credit cards)."""
+    if not text:
+        return text
+    # 1. Redact Emails
+    email_regex = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    text = re.sub(email_regex, '[REDACTED_EMAIL]', text)
+    # 2. Redact Phone Numbers (international and local formats)
+    phone_regex = r'\+?\b(?:\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b'
+    text = re.sub(phone_regex, '[REDACTED_PHONE]', text)
+    # 3. Redact Social Security Numbers (SSN)
+    ssn_regex = r'\b\d{3}-\d{2}-\d{4}\b'
+    text = re.sub(ssn_regex, '[REDACTED_SSN]', text)
+    # 4. Redact Credit Card Numbers (13 to 16 digits)
+    cc_regex = r'\b(?:\d[ -]*?){13,16}\b'
+    text = re.sub(cc_regex, '[REDACTED_CARD]', text)
+    return text
+
+
 @app.post("/feedback")
 def collect_feedback(feedback: Feedback) -> dict[str, str]:
-    """Collect and log feedback.
+    """Collect, sanitize, and log feedback with intent vs outcome tracking.
 
     Args:
         feedback: The feedback data to log
 
     Returns:
-        Success message
+        Success status dict
     """
-    logger.log_struct(feedback.model_dump(), severity="INFO")
+    intent_str = feedback.intent or ""
+    outcome_str = feedback.outcome or ""
+
+    # Reconstruct from session service if missing
+    if (not intent_str or not outcome_str) and feedback.session_id:
+        try:
+            ss = services.get_session_service()
+            session = ss.get_session_sync(session_id=feedback.session_id)
+            if session and session.events:
+                # Extract first user message as intent
+                user_msgs = []
+                for ev in session.events:
+                    if ev.author == "user" and ev.content:
+                        text_parts = []
+                        content_dict = ev.content.model_dump()
+                        for part in content_dict.get("parts", []) or []:
+                            if "text" in part and part["text"]:
+                                text_parts.append(part["text"])
+                        if text_parts:
+                            user_msgs.append("".join(text_parts))
+                if user_msgs and not intent_str:
+                    intent_str = user_msgs[0]
+
+                # Extract last model response as outcome
+                model_msgs = []
+                for ev in session.events:
+                    if ev.author in ("model", "concierge_agent") and ev.content:
+                        text_parts = []
+                        content_dict = ev.content.model_dump()
+                        for part in content_dict.get("parts", []) or []:
+                            if "text" in part and part["text"]:
+                                text_parts.append(part["text"])
+                        if text_parts:
+                            model_msgs.append("".join(text_parts))
+                if model_msgs and not outcome_str:
+                    outcome_str = model_msgs[-1]
+        except Exception:
+            pass
+
+    # Sanitize and redact PII from all textual fields before logging
+    sanitized_text = redact_pii(feedback.text or "")
+    sanitized_intent = redact_pii(intent_str)
+    sanitized_outcome = redact_pii(outcome_str)
+
+    log_payload = feedback.model_dump()
+    log_payload["text"] = sanitized_text
+    log_payload["intent"] = sanitized_intent
+    log_payload["outcome"] = sanitized_outcome
+
+    logger.log_struct(log_payload, severity="INFO")
     return {"status": "success"}
 
 
