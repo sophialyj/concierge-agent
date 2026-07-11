@@ -1,0 +1,25 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "seattle_cheap_saturday",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Plan a cheap Saturday in Seattle with a budget of $25"}]
+      }
+    },
+    {
+      "eval_case_id": "phoenix_cheap_saturday",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Plan a cheap Saturday in Phoenix with a budget of $15"}]
+      }
+    },
+    {
+      "eval_case_id": "seattle_extremely_cheap",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Plan a Saturday in Seattle with a budget of $5"}]
+      }
+    }
+  ]
+}

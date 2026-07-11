@@ -1,0 +1,880 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "seattle_cheap_saturday",
+      "prompt": {
+        "parts": [
+          {
+            "text": "Plan a cheap Saturday in Seattle with a budget of $25"
+          }
+        ],
+        "role": "user"
+      },
+      "responses": [
+        {
+          "response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Here is your personalized Saturday itinerary for Seattle, keeping within your $25.00 budget! \n\n### \ud83c\udf24\ufe0f Weather Forecast for Seattle\n* **Condition:** Clear \u2600\ufe0f\n* **Temperature:** 13.2\u00b0C to 21.7\u00b0C (approx. 56\u00b0F to 71\u00b0F)\n* **Rain Probability:** 2%\n* *Since the weather is clear, both indoor and outdoor events are available for your itinerary!*\n\n---\n\n### \ud83d\udcb0 Budget Summary\n| Category | Amount |\n| :--- | :--- |\n| **Total Budget** | $25.00 |\n| **Total Spent** | $10.00 |\n| **Remaining Budget** | **$15.00** |\n\n---\n\n### \ud83d\udcc5 Saturday Itinerary Timeline\n\n| Time | Event | Location | Cost | Outdoor? |\n| :--- | :--- | :--- | :--- | :--- |\n| **9:00 AM \u2013 11:00 AM** | **Pike Place Market Tasting** | Pike Place Market | $10.00 | No |\n| **11:00 AM \u2013 12:30 PM** | **Seattle Public Library Tour** | Seattle Public Library | $0.00 (Free) | No |\n| **12:30 PM \u2013 2:00 PM** | *Free Time / Lunch Break* | Downtown Seattle | - | - |\n| **2:00 PM \u2013 4:00 PM** | **Olympic Sculpture Park Visit** | Olympic Sculpture Park | $0.00 (Free) | Yes |\n\n---\n\n### \ud83d\udd0d Notes & Filtering Details\n* **Weather Filter:** No events were filtered out due to the weather since the forecast is **Clear**! \n* **Budget & Schedule Filter:** \n  * The **Museum of Pop Culture Exhibit** ($25) and **Chihuly Garden Glass Tour** ($30) were filtered out because they exceeded your remaining budget limit.\n  * The **Seattle Waterfront Walking Tour** (10:00 AM \u2013 12:00 PM) was excluded due to scheduling conflicts with the Pike Place Market Tasting and the Seattle Public Library Tour."
+              }
+            ]
+          }
+        }
+      ],
+      "agent_data": {
+        "agents": {
+          "concierge_agent": {
+            "agent_id": "concierge_agent",
+            "agent_type": "LlmAgent",
+            "instruction": "You are the Hyper-Local Itinerary Concierge Agent.\nYour goal is to plan a personalized Saturday itinerary for a user in their city under a given budget.\n\nTo plan the itinerary, you MUST follow these steps in order:\n1. Retrieve the weather forecast for the city using the `get_weather_forecast` tool.\n2. Scrape local public events for that city using the `scrape_public_events` tool. \n   - If the user did not provide a specific URL, construct a mock URL like `http://mock.calendar/city_name` (e.g. `http://mock.calendar/seattle` or `http://mock.calendar/phoenix`) to scrape.\n3. Filter the scraped events and schedule a timeline using the `filter_and_schedule_itinerary` tool.\n   - You MUST pass the exact events list from `scrape_public_events`.\n   - Pass the weather condition returned by `get_weather_forecast`.\n   - Pass the user's budget. If they say \"cheap\" without a budget, use a default of $25.00.\n4. Present the final itinerary to the user in a well-formatted table and timeline, summarizing:\n   - Weather condition, temperature, and rain probability.\n   - Total budget, total spent, and remaining budget.\n   - A step-by-step timeline of scheduled events with times, locations, and costs.\n   - Explicitly mention if any events were filtered out due to weather (e.g., if it is raining, explain that outdoor events were filtered out).\n"
+          }
+        },
+        "turns": [
+          {
+            "turn_index": 0,
+            "turn_id": "turn_0",
+            "events": [
+              {
+                "author": "user",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Plan a cheap Saturday in Seattle with a budget of $25"
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "sbri9haj",
+                        "args": {
+                          "city": "Seattle"
+                        },
+                        "name": "get_weather_forecast"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "sbri9haj",
+                        "name": "get_weather_forecast",
+                        "response": {
+                          "city": "Seattle",
+                          "condition": "Clear",
+                          "temp_max": 21.7,
+                          "temp_min": 13.2,
+                          "rain_probability": 2,
+                          "date": "2026-07-11"
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "0e95fn80",
+                        "args": {
+                          "city": "Seattle",
+                          "url": "http://mock.calendar/seattle"
+                        },
+                        "name": "scrape_public_events"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "0e95fn80",
+                        "name": "scrape_public_events",
+                        "response": {
+                          "city": "Seattle",
+                          "events": [
+                            {
+                              "name": "Pike Place Market Tasting",
+                              "cost": 10.0,
+                              "is_outdoor": false,
+                              "start_time": "9:00 AM",
+                              "end_time": "11:00 AM",
+                              "location": "Pike Place Market"
+                            },
+                            {
+                              "name": "Seattle Waterfront Walking Tour",
+                              "cost": 0.0,
+                              "is_outdoor": true,
+                              "start_time": "10:00 AM",
+                              "end_time": "12:00 PM",
+                              "location": "Seattle Waterfront"
+                            },
+                            {
+                              "name": "Seattle Public Library Tour",
+                              "cost": 0.0,
+                              "is_outdoor": false,
+                              "start_time": "11:00 AM",
+                              "end_time": "12:30 PM",
+                              "location": "Seattle Public Library"
+                            },
+                            {
+                              "name": "Museum of Pop Culture Exhibit",
+                              "cost": 25.0,
+                              "is_outdoor": false,
+                              "start_time": "1:00 PM",
+                              "end_time": "4:00 PM",
+                              "location": "Museum of Pop Culture"
+                            },
+                            {
+                              "name": "Olympic Sculpture Park Visit",
+                              "cost": 0.0,
+                              "is_outdoor": true,
+                              "start_time": "2:00 PM",
+                              "end_time": "4:00 PM",
+                              "location": "Olympic Sculpture Park"
+                            },
+                            {
+                              "name": "Chihuly Garden Glass Tour",
+                              "cost": 30.0,
+                              "is_outdoor": false,
+                              "start_time": "3:00 PM",
+                              "end_time": "5:00 PM",
+                              "location": "Chihuly Garden and Glass"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "m27gxt6v",
+                        "args": {
+                          "weather_condition": "Clear",
+                          "budget": 25,
+                          "events": [
+                            {
+                              "location": "Pike Place Market",
+                              "cost": 10,
+                              "name": "Pike Place Market Tasting",
+                              "start_time": "9:00 AM",
+                              "is_outdoor": false,
+                              "end_time": "11:00 AM"
+                            },
+                            {
+                              "is_outdoor": true,
+                              "end_time": "12:00 PM",
+                              "location": "Seattle Waterfront",
+                              "cost": 0,
+                              "name": "Seattle Waterfront Walking Tour",
+                              "start_time": "10:00 AM"
+                            },
+                            {
+                              "name": "Seattle Public Library Tour",
+                              "start_time": "11:00 AM",
+                              "cost": 0,
+                              "location": "Seattle Public Library",
+                              "end_time": "12:30 PM",
+                              "is_outdoor": false
+                            },
+                            {
+                              "location": "Museum of Pop Culture",
+                              "cost": 25,
+                              "name": "Museum of Pop Culture Exhibit",
+                              "start_time": "1:00 PM",
+                              "end_time": "4:00 PM",
+                              "is_outdoor": false
+                            },
+                            {
+                              "end_time": "4:00 PM",
+                              "is_outdoor": true,
+                              "location": "Olympic Sculpture Park",
+                              "cost": 0,
+                              "name": "Olympic Sculpture Park Visit",
+                              "start_time": "2:00 PM"
+                            },
+                            {
+                              "name": "Chihuly Garden Glass Tour",
+                              "start_time": "3:00 PM",
+                              "location": "Chihuly Garden and Glass",
+                              "cost": 30,
+                              "end_time": "5:00 PM",
+                              "is_outdoor": false
+                            }
+                          ]
+                        },
+                        "name": "filter_and_schedule_itinerary"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "m27gxt6v",
+                        "name": "filter_and_schedule_itinerary",
+                        "response": {
+                          "weather_condition": "Clear",
+                          "total_budget": 25,
+                          "total_spent": 10.0,
+                          "remaining_budget": 15.0,
+                          "schedule": [
+                            {
+                              "location": "Pike Place Market",
+                              "cost": 10,
+                              "name": "Pike Place Market Tasting",
+                              "start_time": "9:00 AM",
+                              "is_outdoor": false,
+                              "end_time": "11:00 AM"
+                            },
+                            {
+                              "name": "Seattle Public Library Tour",
+                              "start_time": "11:00 AM",
+                              "cost": 0,
+                              "location": "Seattle Public Library",
+                              "end_time": "12:30 PM",
+                              "is_outdoor": false
+                            },
+                            {
+                              "end_time": "4:00 PM",
+                              "is_outdoor": true,
+                              "location": "Olympic Sculpture Park",
+                              "cost": 0,
+                              "name": "Olympic Sculpture Park Visit",
+                              "start_time": "2:00 PM"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Here is your personalized Saturday itinerary for Seattle, keeping within your $25.00 budget! \n\n### \ud83c\udf24\ufe0f Weather Forecast for Seattle\n* **Condition:** Clear \u2600\ufe0f\n* **Temperature:** 13.2\u00b0C to 21.7\u00b0C (approx. 56\u00b0F to 71\u00b0F)\n* **Rain Probability:** 2%\n* *Since the weather is clear, both indoor and outdoor events are available for your itinerary!*\n\n---\n\n### \ud83d\udcb0 Budget Summary\n| Category | Amount |\n| :--- | :--- |\n| **Total Budget** | $25.00 |\n| **Total Spent** | $10.00 |\n| **Remaining Budget** | **$15.00** |\n\n---\n\n### \ud83d\udcc5 Saturday Itinerary Timeline\n\n| Time | Event | Location | Cost | Outdoor? |\n| :--- | :--- | :--- | :--- | :--- |\n| **9:00 AM \u2013 11:00 AM** | **Pike Place Market Tasting** | Pike Place Market | $10.00 | No |\n| **11:00 AM \u2013 12:30 PM** | **Seattle Public Library Tour** | Seattle Public Library | $0.00 (Free) | No |\n| **12:30 PM \u2013 2:00 PM** | *Free Time / Lunch Break* | Downtown Seattle | - | - |\n| **2:00 PM \u2013 4:00 PM** | **Olympic Sculpture Park Visit** | Olympic Sculpture Park | $0.00 (Free) | Yes |\n\n---\n\n### \ud83d\udd0d Notes & Filtering Details\n* **Weather Filter:** No events were filtered out due to the weather since the forecast is **Clear**! \n* **Budget & Schedule Filter:** \n  * The **Museum of Pop Culture Exhibit** ($25) and **Chihuly Garden Glass Tour** ($30) were filtered out because they exceeded your remaining budget limit.\n  * The **Seattle Waterfront Walking Tour** (10:00 AM \u2013 12:00 PM) was excluded due to scheduling conflicts with the Pike Place Market Tasting and the Seattle Public Library Tour."
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "eval_case_id": "phoenix_cheap_saturday",
+      "prompt": {
+        "parts": [
+          {
+            "text": "Plan a cheap Saturday in Phoenix with a budget of $15"
+          }
+        ],
+        "role": "user"
+      },
+      "responses": [
+        {
+          "response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Here is your personalized Saturday itinerary for **Phoenix**, planned around a budget of **$15.00**.\n\n### \u2600\ufe0f Weather Forecast\n*   **Condition:** Clear\n*   **Temperature:** Max 42.7\u00b0C (approx. 109\u00b0F) / Min 32.0\u00b0C (approx. 90\u00b0F)\n*   **Rain Probability:** 3%\n*   *Note: Since the weather is clear, outdoor events remain scheduled and have not been filtered out due to rain.*\n\n---\n\n### \ud83d\udcb0 Budget Summary\n| Category | Amount |\n| :--- | :--- |\n| **Total Budget** | $15.00 |\n| **Total Spent** | $10.00 |\n| **Remaining Budget** | $5.00 |\n\n---\n\n### \ud83d\uddd3\ufe0f Scheduled Timeline\n\n| Time | Event | Location | Cost | Outdoor? |\n| :--- | :--- | :--- | :--- | :--- |\n| **7:00 AM - 9:30 AM** | South Mountain Park Hiking | South Mountain Park | $0.00 | Yes |\n| **1:00 PM - 4:00 PM** | Phoenix Art Museum | Phoenix Art Museum | $10.00 | No |\n| **5:30 PM - 7:00 PM** | Papago Park Hole-in-the-Rock Walk | Papago Park | $0.00 | Yes |\n\n---\n\n### \ud83d\udeab Filtered & Non-Scheduled Events\n*   **Desert Botanical Garden Tour ($15.00):** Not scheduled due to a minor timing conflict with the morning hike, and choosing this would leave no budget for the afternoon museum visit.\n*   **Heard Museum Exhibition ($20.00):** Excluded as the ticket cost exceeds your total budget of $15.00."
+              }
+            ]
+          }
+        }
+      ],
+      "agent_data": {
+        "agents": {
+          "concierge_agent": {
+            "agent_id": "concierge_agent",
+            "agent_type": "LlmAgent",
+            "instruction": "You are the Hyper-Local Itinerary Concierge Agent.\nYour goal is to plan a personalized Saturday itinerary for a user in their city under a given budget.\n\nTo plan the itinerary, you MUST follow these steps in order:\n1. Retrieve the weather forecast for the city using the `get_weather_forecast` tool.\n2. Scrape local public events for that city using the `scrape_public_events` tool. \n   - If the user did not provide a specific URL, construct a mock URL like `http://mock.calendar/city_name` (e.g. `http://mock.calendar/seattle` or `http://mock.calendar/phoenix`) to scrape.\n3. Filter the scraped events and schedule a timeline using the `filter_and_schedule_itinerary` tool.\n   - You MUST pass the exact events list from `scrape_public_events`.\n   - Pass the weather condition returned by `get_weather_forecast`.\n   - Pass the user's budget. If they say \"cheap\" without a budget, use a default of $25.00.\n4. Present the final itinerary to the user in a well-formatted table and timeline, summarizing:\n   - Weather condition, temperature, and rain probability.\n   - Total budget, total spent, and remaining budget.\n   - A step-by-step timeline of scheduled events with times, locations, and costs.\n   - Explicitly mention if any events were filtered out due to weather (e.g., if it is raining, explain that outdoor events were filtered out).\n"
+          }
+        },
+        "turns": [
+          {
+            "turn_index": 0,
+            "turn_id": "turn_0",
+            "events": [
+              {
+                "author": "user",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Plan a cheap Saturday in Phoenix with a budget of $15"
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "tuwb927k",
+                        "args": {
+                          "city": "Phoenix"
+                        },
+                        "name": "get_weather_forecast"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "tuwb927k",
+                        "name": "get_weather_forecast",
+                        "response": {
+                          "city": "Phoenix",
+                          "condition": "Clear",
+                          "temp_max": 42.7,
+                          "temp_min": 32.0,
+                          "rain_probability": 3,
+                          "date": "2026-07-11"
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "lf1e6ipb",
+                        "args": {
+                          "city": "Phoenix",
+                          "url": "http://mock.calendar/phoenix"
+                        },
+                        "name": "scrape_public_events"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "lf1e6ipb",
+                        "name": "scrape_public_events",
+                        "response": {
+                          "city": "Phoenix",
+                          "events": [
+                            {
+                              "name": "South Mountain Park Hiking",
+                              "cost": 0.0,
+                              "is_outdoor": true,
+                              "start_time": "7:00 AM",
+                              "end_time": "9:30 AM",
+                              "location": "South Mountain Park"
+                            },
+                            {
+                              "name": "Desert Botanical Garden Tour",
+                              "cost": 15.0,
+                              "is_outdoor": true,
+                              "start_time": "9:00 AM",
+                              "end_time": "11:30 AM",
+                              "location": "Desert Botanical Garden"
+                            },
+                            {
+                              "name": "Heard Museum Exhibition",
+                              "cost": 20.0,
+                              "is_outdoor": false,
+                              "start_time": "11:00 AM",
+                              "end_time": "2:00 PM",
+                              "location": "Heard Museum"
+                            },
+                            {
+                              "name": "Phoenix Art Museum",
+                              "cost": 10.0,
+                              "is_outdoor": false,
+                              "start_time": "1:00 PM",
+                              "end_time": "4:00 PM",
+                              "location": "Phoenix Art Museum"
+                            },
+                            {
+                              "name": "Papago Park Hole-in-the-Rock Walk",
+                              "cost": 0.0,
+                              "is_outdoor": true,
+                              "start_time": "5:30 PM",
+                              "end_time": "7:00 PM",
+                              "location": "Papago Park"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "rx18d5wg",
+                        "args": {
+                          "weather_condition": "Clear",
+                          "budget": 15,
+                          "events": [
+                            {
+                              "location": "South Mountain Park",
+                              "cost": 0,
+                              "name": "South Mountain Park Hiking",
+                              "is_outdoor": true,
+                              "start_time": "7:00 AM",
+                              "end_time": "9:30 AM"
+                            },
+                            {
+                              "end_time": "11:30 AM",
+                              "start_time": "9:00 AM",
+                              "is_outdoor": true,
+                              "name": "Desert Botanical Garden Tour",
+                              "cost": 15,
+                              "location": "Desert Botanical Garden"
+                            },
+                            {
+                              "location": "Heard Museum",
+                              "end_time": "2:00 PM",
+                              "is_outdoor": false,
+                              "cost": 20,
+                              "name": "Heard Museum Exhibition",
+                              "start_time": "11:00 AM"
+                            },
+                            {
+                              "location": "Phoenix Art Museum",
+                              "is_outdoor": false,
+                              "name": "Phoenix Art Museum",
+                              "cost": 10,
+                              "start_time": "1:00 PM",
+                              "end_time": "4:00 PM"
+                            },
+                            {
+                              "is_outdoor": true,
+                              "name": "Papago Park Hole-in-the-Rock Walk",
+                              "cost": 0,
+                              "start_time": "5:30 PM",
+                              "end_time": "7:00 PM",
+                              "location": "Papago Park"
+                            }
+                          ]
+                        },
+                        "name": "filter_and_schedule_itinerary"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "rx18d5wg",
+                        "name": "filter_and_schedule_itinerary",
+                        "response": {
+                          "weather_condition": "Clear",
+                          "total_budget": 15,
+                          "total_spent": 10.0,
+                          "remaining_budget": 5.0,
+                          "schedule": [
+                            {
+                              "location": "South Mountain Park",
+                              "cost": 0,
+                              "name": "South Mountain Park Hiking",
+                              "is_outdoor": true,
+                              "start_time": "7:00 AM",
+                              "end_time": "9:30 AM"
+                            },
+                            {
+                              "location": "Phoenix Art Museum",
+                              "is_outdoor": false,
+                              "name": "Phoenix Art Museum",
+                              "cost": 10,
+                              "start_time": "1:00 PM",
+                              "end_time": "4:00 PM"
+                            },
+                            {
+                              "is_outdoor": true,
+                              "name": "Papago Park Hole-in-the-Rock Walk",
+                              "cost": 0,
+                              "start_time": "5:30 PM",
+                              "end_time": "7:00 PM",
+                              "location": "Papago Park"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Here is your personalized Saturday itinerary for **Phoenix**, planned around a budget of **$15.00**.\n\n### \u2600\ufe0f Weather Forecast\n*   **Condition:** Clear\n*   **Temperature:** Max 42.7\u00b0C (approx. 109\u00b0F) / Min 32.0\u00b0C (approx. 90\u00b0F)\n*   **Rain Probability:** 3%\n*   *Note: Since the weather is clear, outdoor events remain scheduled and have not been filtered out due to rain.*\n\n---\n\n### \ud83d\udcb0 Budget Summary\n| Category | Amount |\n| :--- | :--- |\n| **Total Budget** | $15.00 |\n| **Total Spent** | $10.00 |\n| **Remaining Budget** | $5.00 |\n\n---\n\n### \ud83d\uddd3\ufe0f Scheduled Timeline\n\n| Time | Event | Location | Cost | Outdoor? |\n| :--- | :--- | :--- | :--- | :--- |\n| **7:00 AM - 9:30 AM** | South Mountain Park Hiking | South Mountain Park | $0.00 | Yes |\n| **1:00 PM - 4:00 PM** | Phoenix Art Museum | Phoenix Art Museum | $10.00 | No |\n| **5:30 PM - 7:00 PM** | Papago Park Hole-in-the-Rock Walk | Papago Park | $0.00 | Yes |\n\n---\n\n### \ud83d\udeab Filtered & Non-Scheduled Events\n*   **Desert Botanical Garden Tour ($15.00):** Not scheduled due to a minor timing conflict with the morning hike, and choosing this would leave no budget for the afternoon museum visit.\n*   **Heard Museum Exhibition ($20.00):** Excluded as the ticket cost exceeds your total budget of $15.00."
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "eval_case_id": "seattle_extremely_cheap",
+      "prompt": {
+        "parts": [
+          {
+            "text": "Plan a Saturday in Seattle with a budget of $5"
+          }
+        ],
+        "role": "user"
+      },
+      "responses": [
+        {
+          "response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Here is your personalized Saturday itinerary for **Seattle** under a **$5.00** budget!\n\n### \u2600\ufe0f Weather Forecast\n*   **Condition:** Clear\n*   **Temperature:** 13.2\u00b0C \u2013 21.7\u00b0C (55.8\u00b0F \u2013 71.1\u00b0F)\n*   **Rain Probability:** 2%\n*   *Since the weather is clear, outdoor events have been included in your schedule!*\n\n---\n\n### \ud83d\udcb0 Budget Summary\n*   **Total Budget:** $5.00\n*   **Total Spent:** $0.00\n*   **Remaining Budget:** $5.00\n\n---\n\n### \ud83d\udcc5 Saturday Timeline\n\n| Time | Event | Location | Cost | Outdoor? |\n| :--- | :--- | :--- | :--- | :--- |\n| **10:00 AM \u2013 12:00 PM** | Seattle Waterfront Walking Tour | Seattle Waterfront | Free ($0) | Yes \ud83c\udf33 |\n| **12:00 PM \u2013 2:00 PM** | *Free Time / Lunch Break* | Downtown Seattle | - | - |\n| **2:00 PM \u2013 4:00 PM** | Olympic Sculpture Park Visit | Olympic Sculpture Park | Free ($0) | Yes \ud83c\udf33 |\n\n---\n\n### \ud83d\udd0d Filtering & Scheduling Notes\n*   **Weather Filters:** No events were filtered out due to weather since it is a beautiful, **Clear** Saturday.\n*   **Budget Filters:** The *Pike Place Market Tasting* ($10), *Museum of Pop Culture Exhibit* ($25), and *Chihuly Garden Glass Tour* ($30) were filtered out because they exceeded your $5.00 budget.\n*   **Schedule Conflicts:** The *Seattle Public Library Tour* (11:00 AM \u2013 12:30 PM) is free, but was not scheduled due to a timing conflict with the Waterfront Walking Tour.\n\nEnjoy your beautiful, budget-friendly Saturday in Seattle!"
+              }
+            ]
+          }
+        }
+      ],
+      "agent_data": {
+        "agents": {
+          "concierge_agent": {
+            "agent_id": "concierge_agent",
+            "agent_type": "LlmAgent",
+            "instruction": "You are the Hyper-Local Itinerary Concierge Agent.\nYour goal is to plan a personalized Saturday itinerary for a user in their city under a given budget.\n\nTo plan the itinerary, you MUST follow these steps in order:\n1. Retrieve the weather forecast for the city using the `get_weather_forecast` tool.\n2. Scrape local public events for that city using the `scrape_public_events` tool. \n   - If the user did not provide a specific URL, construct a mock URL like `http://mock.calendar/city_name` (e.g. `http://mock.calendar/seattle` or `http://mock.calendar/phoenix`) to scrape.\n3. Filter the scraped events and schedule a timeline using the `filter_and_schedule_itinerary` tool.\n   - You MUST pass the exact events list from `scrape_public_events`.\n   - Pass the weather condition returned by `get_weather_forecast`.\n   - Pass the user's budget. If they say \"cheap\" without a budget, use a default of $25.00.\n4. Present the final itinerary to the user in a well-formatted table and timeline, summarizing:\n   - Weather condition, temperature, and rain probability.\n   - Total budget, total spent, and remaining budget.\n   - A step-by-step timeline of scheduled events with times, locations, and costs.\n   - Explicitly mention if any events were filtered out due to weather (e.g., if it is raining, explain that outdoor events were filtered out).\n"
+          }
+        },
+        "turns": [
+          {
+            "turn_index": 0,
+            "turn_id": "turn_0",
+            "events": [
+              {
+                "author": "user",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Plan a Saturday in Seattle with a budget of $5"
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "fdm52dpf",
+                        "args": {
+                          "city": "Seattle"
+                        },
+                        "name": "get_weather_forecast"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "fdm52dpf",
+                        "name": "get_weather_forecast",
+                        "response": {
+                          "city": "Seattle",
+                          "condition": "Clear",
+                          "temp_max": 21.7,
+                          "temp_min": 13.2,
+                          "rain_probability": 2,
+                          "date": "2026-07-11"
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "blm69zn1",
+                        "args": {
+                          "url": "http://mock.calendar/seattle",
+                          "city": "Seattle"
+                        },
+                        "name": "scrape_public_events"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "blm69zn1",
+                        "name": "scrape_public_events",
+                        "response": {
+                          "city": "Seattle",
+                          "events": [
+                            {
+                              "name": "Pike Place Market Tasting",
+                              "cost": 10.0,
+                              "is_outdoor": false,
+                              "start_time": "9:00 AM",
+                              "end_time": "11:00 AM",
+                              "location": "Pike Place Market"
+                            },
+                            {
+                              "name": "Seattle Waterfront Walking Tour",
+                              "cost": 0.0,
+                              "is_outdoor": true,
+                              "start_time": "10:00 AM",
+                              "end_time": "12:00 PM",
+                              "location": "Seattle Waterfront"
+                            },
+                            {
+                              "name": "Seattle Public Library Tour",
+                              "cost": 0.0,
+                              "is_outdoor": false,
+                              "start_time": "11:00 AM",
+                              "end_time": "12:30 PM",
+                              "location": "Seattle Public Library"
+                            },
+                            {
+                              "name": "Museum of Pop Culture Exhibit",
+                              "cost": 25.0,
+                              "is_outdoor": false,
+                              "start_time": "1:00 PM",
+                              "end_time": "4:00 PM",
+                              "location": "Museum of Pop Culture"
+                            },
+                            {
+                              "name": "Olympic Sculpture Park Visit",
+                              "cost": 0.0,
+                              "is_outdoor": true,
+                              "start_time": "2:00 PM",
+                              "end_time": "4:00 PM",
+                              "location": "Olympic Sculpture Park"
+                            },
+                            {
+                              "name": "Chihuly Garden Glass Tour",
+                              "cost": 30.0,
+                              "is_outdoor": false,
+                              "start_time": "3:00 PM",
+                              "end_time": "5:00 PM",
+                              "location": "Chihuly Garden and Glass"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "alzybhb2",
+                        "args": {
+                          "budget": 5,
+                          "weather_condition": "Clear",
+                          "events": [
+                            {
+                              "location": "Pike Place Market",
+                              "name": "Pike Place Market Tasting",
+                              "start_time": "9:00 AM",
+                              "is_outdoor": false,
+                              "cost": 10,
+                              "end_time": "11:00 AM"
+                            },
+                            {
+                              "cost": 0,
+                              "end_time": "12:00 PM",
+                              "is_outdoor": true,
+                              "start_time": "10:00 AM",
+                              "location": "Seattle Waterfront",
+                              "name": "Seattle Waterfront Walking Tour"
+                            },
+                            {
+                              "location": "Seattle Public Library",
+                              "name": "Seattle Public Library Tour",
+                              "start_time": "11:00 AM",
+                              "is_outdoor": false,
+                              "cost": 0,
+                              "end_time": "12:30 PM"
+                            },
+                            {
+                              "end_time": "4:00 PM",
+                              "cost": 25,
+                              "is_outdoor": false,
+                              "start_time": "1:00 PM",
+                              "name": "Museum of Pop Culture Exhibit",
+                              "location": "Museum of Pop Culture"
+                            },
+                            {
+                              "end_time": "4:00 PM",
+                              "cost": 0,
+                              "is_outdoor": true,
+                              "start_time": "2:00 PM",
+                              "location": "Olympic Sculpture Park",
+                              "name": "Olympic Sculpture Park Visit"
+                            },
+                            {
+                              "is_outdoor": false,
+                              "end_time": "5:00 PM",
+                              "cost": 30,
+                              "name": "Chihuly Garden Glass Tour",
+                              "location": "Chihuly Garden and Glass",
+                              "start_time": "3:00 PM"
+                            }
+                          ]
+                        },
+                        "name": "filter_and_schedule_itinerary"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "alzybhb2",
+                        "name": "filter_and_schedule_itinerary",
+                        "response": {
+                          "weather_condition": "Clear",
+                          "total_budget": 5,
+                          "total_spent": 0.0,
+                          "remaining_budget": 5.0,
+                          "schedule": [
+                            {
+                              "cost": 0,
+                              "end_time": "12:00 PM",
+                              "is_outdoor": true,
+                              "start_time": "10:00 AM",
+                              "location": "Seattle Waterfront",
+                              "name": "Seattle Waterfront Walking Tour"
+                            },
+                            {
+                              "end_time": "4:00 PM",
+                              "cost": 0,
+                              "is_outdoor": true,
+                              "start_time": "2:00 PM",
+                              "location": "Olympic Sculpture Park",
+                              "name": "Olympic Sculpture Park Visit"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              },
+              {
+                "author": "concierge_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Here is your personalized Saturday itinerary for **Seattle** under a **$5.00** budget!\n\n### \u2600\ufe0f Weather Forecast\n*   **Condition:** Clear\n*   **Temperature:** 13.2\u00b0C \u2013 21.7\u00b0C (55.8\u00b0F \u2013 71.1\u00b0F)\n*   **Rain Probability:** 2%\n*   *Since the weather is clear, outdoor events have been included in your schedule!*\n\n---\n\n### \ud83d\udcb0 Budget Summary\n*   **Total Budget:** $5.00\n*   **Total Spent:** $0.00\n*   **Remaining Budget:** $5.00\n\n---\n\n### \ud83d\udcc5 Saturday Timeline\n\n| Time | Event | Location | Cost | Outdoor? |\n| :--- | :--- | :--- | :--- | :--- |\n| **10:00 AM \u2013 12:00 PM** | Seattle Waterfront Walking Tour | Seattle Waterfront | Free ($0) | Yes \ud83c\udf33 |\n| **12:00 PM \u2013 2:00 PM** | *Free Time / Lunch Break* | Downtown Seattle | - | - |\n| **2:00 PM \u2013 4:00 PM** | Olympic Sculpture Park Visit | Olympic Sculpture Park | Free ($0) | Yes \ud83c\udf33 |\n\n---\n\n### \ud83d\udd0d Filtering & Scheduling Notes\n*   **Weather Filters:** No events were filtered out due to weather since it is a beautiful, **Clear** Saturday.\n*   **Budget Filters:** The *Pike Place Market Tasting* ($10), *Museum of Pop Culture Exhibit* ($25), and *Chihuly Garden Glass Tour* ($30) were filtered out because they exceeded your $5.00 budget.\n*   **Schedule Conflicts:** The *Seattle Public Library Tour* (11:00 AM \u2013 12:30 PM) is free, but was not scheduled due to a timing conflict with the Waterfront Walking Tour.\n\nEnjoy your beautiful, budget-friendly Saturday in Seattle!"
+                    }
+                  ],
+                  "role": "model"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

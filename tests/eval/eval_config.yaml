@@ -1,0 +1,14 @@
+metrics_to_run:
+  - custom_response_quality
+  - itinerary_correctness
+
+custom_metrics:
+  - name: custom_response_quality
+    custom_function_file: metrics.py
+  - name: itinerary_correctness
+    custom_function_file: itinerary_metric.py
+  - name: agent_turn_count
+    custom_function: |
+      def evaluate(instance):
+          turns = (instance.get("agent_data") or {}).get("turns", [])
+          return {'score': len(turns)}
