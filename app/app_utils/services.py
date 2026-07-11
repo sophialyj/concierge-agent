@@ -72,7 +72,16 @@ def get_artifact_service():
 
 @functools.cache
 def get_memory_service():
-    """Process-wide memory service: InMemoryMemoryService for local dev."""
+    """Process-wide memory service: VertexAiMemoryBankService in cloud, else InMemoryMemoryService."""
+    if agent_engine_id := os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID"):
+        from google.adk.memory.vertex_ai_memory_bank_service import VertexAiMemoryBankService
+
+        return VertexAiMemoryBankService(
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            location=os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_LOCATION")
+            or os.environ.get("GOOGLE_CLOUD_LOCATION"),
+            agent_engine_id=agent_engine_id,
+        )
     return InMemoryMemoryService()
 
 
