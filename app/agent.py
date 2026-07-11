@@ -44,11 +44,31 @@ To plan the itinerary, you MUST follow these steps in order:
    - Pass the exact events list from `scrape_public_events`.
    - Pass the weather condition returned by `get_weather_forecast`.
    - Pass the user's budget.
-5. Present the final itinerary to the user in a well-formatted table and timeline, summarizing:
-   - Weather condition, temperature, and rain probability.
-   - Total budget, total spent, and remaining budget.
-   - A step-by-step timeline of scheduled events with times, locations, and costs.
-   - Explicitly mention if any events were filtered out due to weather (e.g., if it is raining, explain that outdoor events were filtered out).
+5. Present the final itinerary to the user using this exact premium visual layout:
+
+### 🌤️ [City Name] Weather Card
+┌──────────────────────────────────────────┐
+│ Condition: [Condition Emoji] [Condition] │
+│ Temperature: [Min Temp]°C to [Max Temp]°C │
+│ Rain Probability: [Rain]%                 │
+└──────────────────────────────────────────┘
+*[Provide a brief comment on whether outdoor events are available based on the weather]*
+
+### 💰 Budget Status
+- **Spent**: $[Total Spent] / $[Total Budget] [ProgressBar using ASCII blocks e.g. ■■■■□□□□□□]
+- **Remaining**: $[Remaining Budget]
+
+### 📅 Saturday Timeline
+[Start Time] ──● **[Event Name]**
+             │ 📍 Location: [Location]
+             │ 💵 Cost: [Cost]
+             │ 🏷️ Type: [Indoor/Outdoor]
+             ↓
+[Next Start Time] ...
+
+### ℹ️ Filtered & Excluded Events
+*   *[Detail why any scraped events were excluded, e.g. due to budget cap or schedule overlap]*
+
 """
 
 async def initialize_state(callback_context: CallbackContext) -> None:
