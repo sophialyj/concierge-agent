@@ -12,24 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM python:3.12-slim
+output "app_service_account_emails" {
+  description = "Application service account emails by environment"
+  value       = { for k, v in google_service_account.app_sa : k => v.email }
+}
 
-RUN pip install --no-cache-dir uv==0.8.13
+output "cicd_runner_service_account_email" {
+  description = "CI/CD runner service account email"
+  value       = google_service_account.cicd_runner_sa.email
+}
 
-WORKDIR /code
+output "logs_bucket_names" {
+  description = "Logs storage bucket names by environment"
+  value       = { for k, v in google_storage_bucket.logs_data_bucket : k => v.name }
+}
 
-COPY ./pyproject.toml ./README.md ./uv.lock* ./
-
-COPY ./app ./app
-
-RUN uv sync --frozen
-
-ARG COMMIT_SHA=""
-ENV COMMIT_SHA=${COMMIT_SHA}
-
-ARG AGENT_VERSION=0.0.0
-ENV AGENT_VERSION=${AGENT_VERSION}
-
-EXPOSE 8080
-
-CMD ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]

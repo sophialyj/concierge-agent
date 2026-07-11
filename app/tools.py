@@ -13,9 +13,11 @@
 # limitations under the License.
 
 import datetime
+import re
 import urllib.parse
 import requests
 from bs4 import BeautifulSoup
+from google.adk.tools import ToolContext
 
 # Standard WMO Weather codes for rain/snow/drizzle
 RAIN_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}
@@ -82,16 +84,21 @@ MOCK_HTML_PHOENIX = """
 """
 
 
-def get_weather_forecast(city: str) -> dict:
+def get_weather_forecast(city: str, tool_context: ToolContext) -> dict:
     """Retrieves the weather forecast for the upcoming Saturday in the given city.
 
     Args:
         city: The name of the city to get the forecast for.
+        tool_context: The ADK context used to access and persist preferences.
 
     Returns:
         A dictionary containing the weather condition (Rain/Clear), temperature,
         precipitation probability, date, and city name.
     """
+    # Persist the user's preferred city across runs
+    if tool_context and hasattr(tool_context, "state"):
+        tool_context.state["user:preferred_city"] = city
+
     # 1. Geocoding: resolve city to latitude/longitude
     lat, lon = None, None
     city_lower = city.lower()
@@ -122,7 +129,6 @@ def get_weather_forecast(city: str) -> dict:
         elif "phoenix" in city_lower:
             lat, lon = 33.4484, -112.0740
         else:
-            # Default to Seattle coordinates
             lat, lon = 47.6062, -122.3321
 
     # 2. Query forecast daily endpoint
@@ -155,7 +161,6 @@ def get_weather_forecast(city: str) -> dict:
                 sat_idx = i
                 break
         
-        # Fallback to index 0 if Saturday is not in the range (e.g. daily forecast is short)
         if sat_idx is None and len(times) > 0:
             sat_idx = 0
 
@@ -184,23 +189,23 @@ def get_weather_forecast(city: str) -> dict:
     }
 
 
-def scrape_public_events(url: str, city: str) -> dict:
-    """Scrapes a public event calendar HTML page using BeautifulSoup.
+def scrape_public_events(url: str, city: str, tool_context: ToolContext) -> list:
+    """Scrapes a public event calendar HTML page using BeautifulSoup and returns a list of events.
 
     Args:
         url: The public URL of the calendar website to read.
         city: The name of the city we are scraping events for.
+        tool_context: The ADK context used to access and persist preferences.
 
     Returns:
-        A dictionary containing a list of events found under 'events', where each
-        event has 'name', 'cost', 'is_outdoor', 'start_time', 'end_time', and 'location'.
+        A list of events found, where each event is a dictionary containing
+        'name', 'cost', 'is_outdoor', 'start_time', 'end_time', and 'location'.
     """
     html_content = ""
     city_lower = city.lower()
     
     # 1. Fetch live page or load mock data
     if "mock" in url or not url.startswith("http"):
-        # Select appropriate mock data
         if "seattle" in city_lower:
             html_content = MOCK_HTML_SEATTLE
         else:
@@ -211,106 +216,144 @@ def scrape_public_events(url: str, city: str) -> dict:
             if resp.status_code == 200:
                 html_content = resp.text
             else:
-                # Fallback to mock data on non-200
                 html_content = MOCK_HTML_SEATTLE if "seattle" in city_lower else MOCK_HTML_PHOENIX
         except Exception:
-            # Fallback to mock data on exception
             html_content = MOCK_HTML_SEATTLE if "seattle" in city_lower else MOCK_HTML_PHOENIX
 
-    # 2. BeautifulSoup parsing
+    # 2. BeautifulSoup parsing (Dynamic fallback structure parser)
     soup = BeautifulSoup(html_content, "html.parser")
     events = []
     
-    # Find all divs with class 'event-card'
-    cards = soup.find_all("div", class_="event-card")
-    for card in cards:
-        title_tag = card.find(class_="title")
-        time_tag = card.find(class_="time")
-        
-        name = title_tag.get_text(strip=True) if title_tag else "Unknown Event"
-        time_str = time_tag.get_text(strip=True) if time_tag else "9:00 AM - 5:00 PM"
-        
-        cost_str = card.get("data-cost", "0.00")
-        try:
-            cost = float(cost_str)
-        except ValueError:
-            cost = 0.0
+    # Try parsing structured event-cards
+    cards = soup.find_all(class_=re.compile(r"event-card|event-item|event"))
+    if cards:
+        for card in cards:
+            title_tag = card.find(class_=re.compile(r"title|name|header"))
+            time_tag = card.find(class_=re.compile(r"time|date|schedule"))
             
-        location = card.get("data-location", "Unknown Location")
-        is_outdoor = card.get("data-type") == "outdoor"
-        
-        # Parse start and end time from string (e.g. '10:00 AM - 12:00 PM')
-        parts = time_str.split(" - ")
-        start_time = parts[0] if len(parts) > 0 else "9:00 AM"
-        end_time = parts[1] if len(parts) > 1 else "5:00 PM"
-        
-        events.append({
-            "name": name,
-            "cost": cost,
-            "is_outdoor": is_outdoor,
-            "start_time": start_time,
-            "end_time": end_time,
-            "location": location,
-        })
-        
-    return {"city": city, "events": events}
+            name = title_tag.get_text(strip=True) if title_tag else card.find("h2").get_text(strip=True) if card.find("h2") else "Unknown Event"
+            time_str = time_tag.get_text(strip=True) if time_tag else "9:00 AM - 5:00 PM"
+            
+            cost_str = card.get("data-cost") or card.get("cost")
+            if not cost_str:
+                cost_text = card.get_text(strip=True)
+                cost_match = re.search(r'\$\s*([0-9]+(?:\.[0-9]+)?)', cost_text)
+                cost_str = cost_match.group(1) if cost_match else "0.00"
+                
+            try:
+                cost = float(cost_str)
+            except ValueError:
+                cost = 0.0
+                
+            location = card.get("data-location") or card.get("location") or "Local Area"
+            is_outdoor = card.get("data-type") == "outdoor" or "outdoor" in card.get_text(strip=True).lower()
+            
+            parts = time_str.split(" - ")
+            start_time = parts[0] if len(parts) > 0 else "9:00 AM"
+            end_time = parts[1] if len(parts) > 1 else "5:00 PM"
+            
+            events.append({
+                "name": name,
+                "cost": cost,
+                "is_outdoor": is_outdoor,
+                "start_time": start_time,
+                "end_time": end_time,
+                "location": location,
+            })
+            
+    # Fallback to simple table row parsing if no div classes match
+    if not events:
+        rows = soup.find_all("tr")
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) >= 2:
+                name = cols[0].get_text(strip=True)
+                time_str = cols[1].get_text(strip=True)
+                cost = 0.0
+                if len(cols) >= 3:
+                    cost_match = re.search(r'\$\s*([0-9]+(?:\.[0-9]+)?)', cols[2].get_text(strip=True))
+                    if cost_match:
+                        cost = float(cost_match.group(1))
+                
+                parts = time_str.split("-")
+                start_time = parts[0].strip() if len(parts) > 0 else "9:00 AM"
+                end_time = parts[1].strip() if len(parts) > 1 else "5:00 PM"
+                
+                events.append({
+                    "name": name,
+                    "cost": cost,
+                    "is_outdoor": False,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "location": "Local Venue",
+                })
+                
+    return events
 
 
 def filter_and_schedule_itinerary(
-    events: list, weather_condition: str, budget: float
+    events: list, weather_condition: str, budget: float, tool_context: ToolContext
 ) -> dict:
-    """Filters events based on weather (indoor-only if Rain) and cost, and schedules a timeline.
+    """Filters events based on weather and budget constraints and structures a sequential schedule.
 
     Args:
-        events: A list of dictionaries representing events, each containing
-          'name', 'cost', 'is_outdoor', 'start_time', 'end_time', and 'location'.
+        events: A list of dictionaries representing events.
         weather_condition: The current forecast condition (e.g., 'Rain' or 'Clear').
         budget: The total budget limit for the Saturday itinerary in dollars.
+        tool_context: The ADK context used to access and persist preferences.
 
     Returns:
         A dictionary with the scheduled Saturday timeline and summary stats.
     """
+    # Persist the user's preferred budget across runs
+    if tool_context and hasattr(tool_context, "state"):
+        tool_context.state["user:preferred_budget"] = budget
+
+    # Helper function to parse time safely with regex cleaning
+    def parse_time_safe(t_str, default_hour):
+        try:
+            # Clean string to find standard time format
+            match = re.search(r'(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)', str(t_str))
+            if match:
+                clean_str = f"{match.group(1)}:{match.group(2)} {match.group(3).upper()}"
+                return datetime.datetime.strptime(clean_str, "%I:%M %p")
+            return datetime.datetime.strptime(str(t_str).strip(), "%I:%M %p")
+        except Exception:
+            return datetime.datetime.combine(datetime.date.today(), datetime.time(default_hour, 0))
+
     # 1. Filter out outdoor events if it rains
     filtered_events = []
     for ev in events:
+        if not isinstance(ev, dict):
+            continue
         if weather_condition.lower() == "rain" and ev.get("is_outdoor", False):
-            # Skip outdoor events on rainy days
             continue
         filtered_events.append(ev)
         
-    # 2. Sort events by start time or duration to prioritize scheduling
-    # Let's parse time helper for sorting:
-    def parse_time(t_str):
-        try:
-            return datetime.datetime.strptime(t_str.strip(), "%I:%M %p").time()
-        except Exception:
-            return datetime.time(9, 0)
-            
-    filtered_events.sort(key=lambda x: parse_time(x.get("start_time", "9:00 AM")))
+    # Sort events by start time
+    filtered_events.sort(key=lambda x: parse_time_safe(x.get("start_time", "9:00 AM"), 9))
 
-    # 3. Schedule events sequentially, respecting the budget
+    # 2. Schedule events sequentially, respecting the budget
     schedule = []
     total_cost = 0.0
-    current_time = datetime.datetime.strptime("09:00 AM", "%I:%M %p")
     
     for ev in filtered_events:
-        cost = ev.get("cost", 0.0)
-        # Check budget constraint
+        try:
+            cost = float(ev.get("cost", 0.0))
+        except (ValueError, TypeError):
+            cost = 0.0
+
         if total_cost + cost > budget:
             continue
             
-        ev_start = datetime.datetime.strptime(ev.get("start_time", "9:00 AM"), "%I:%M %p")
-        ev_end = datetime.datetime.strptime(ev.get("end_time", "5:00 PM"), "%I:%M %p")
+        ev_start = parse_time_safe(ev.get("start_time", "9:00 AM"), 9)
+        ev_end = parse_time_safe(ev.get("end_time", "5:00 PM"), 17)
         
-        # Avoid scheduling conflicts: ensure event starts after current pointer
-        # If it starts earlier, we can schedule it if we are free.
-        # Simple scheduling: greedily add if it doesn't overlap with already scheduled events.
         overlap = False
         for sch in schedule:
-            s_start = datetime.datetime.strptime(sch.get("start_time"), "%I:%M %p")
-            s_end = datetime.datetime.strptime(sch.get("end_time"), "%I:%M %p")
+            s_start = parse_time_safe(sch.get("start_time"), 9)
+            s_end = parse_time_safe(sch.get("end_time"), 17)
             
-            # Check for overlap: max(start1, start2) < min(end1, end2)
             if max(ev_start, s_start) < min(ev_end, s_end):
                 overlap = True
                 break

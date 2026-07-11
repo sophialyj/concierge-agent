@@ -41,7 +41,8 @@ def evaluate(instance):
     # Scan turns for tool responses
     for turn in turns:
         for event in turn.get("events", []) or []:
-            for part in event.get("content", {}).get("parts", []) or []:
+            content = event.get("content") or {}
+            for part in content.get("parts", []) or []:
                 func_resp = part.get("function_response")
                 if func_resp:
                     if func_resp.get("name") == "filter_and_schedule_itinerary":
@@ -53,7 +54,8 @@ def evaluate(instance):
     # Fallback to direct event scanning
     if not tool_resp_data:
         for event in agent_data.get("events", []) or []:
-            for part in event.get("content", {}).get("parts", []) or []:
+            content = event.get("content") or {}
+            for part in content.get("parts", []) or []:
                 func_resp = part.get("function_response")
                 if func_resp:
                     if func_resp.get("name") == "filter_and_schedule_itinerary":
