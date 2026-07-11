@@ -20,7 +20,7 @@ from google.adk.apps.app import EventsCompactionConfig
 from google.adk.apps.llm_event_summarizer import LlmEventSummarizer
 from google.adk.models import Gemini
 from google.adk.plugins import LoggingPlugin
-from google.adk.tools import request_input, AgentTool
+from google.adk.tools import request_input, AgentTool, google_search
 from google.genai import types
 
 from .tools import (
@@ -124,6 +124,18 @@ planner_agent = Agent(
     tools=[book_event_tickets],
 )
 
+# 4. Web Search Specialist Agent (Flash with Google Search Grounding)
+search_agent = Agent(
+    name="search_agent",
+    model=Gemini(model="models/gemini-flash-latest"),
+    instruction=(
+        "You are the Search Specialist Agent. Your goal is to use the `google_search` tool to find Saturday public events, "
+        "festivals, or local activities in the given city. Extract and return a clean list of events with details like "
+        "name, estimated cost in dollars, venue/location, start/end times, and whether it is indoor or outdoor."
+    ),
+    tools=[google_search],
+)
+
 # =====================================================================
 # ROOT COORDINATOR / ORCHESTRATOR AGENT (Flash)
 # =====================================================================
@@ -143,10 +155,12 @@ root_agent = Agent(
         "1. If the user asks to plan a Saturday in a new city but does not specify which one, you MUST call the `request_input` tool with a hint asking them which city they have in mind.\n"
         "2. Call `weather_agent` to fetch the Saturday weather forecast for the target city.\n"
         "   - CRITICAL: If the weather_agent returns a response containing an `error` and a `recovery_instruction`, you MUST stop planning, notify the user, and call the `request_input` tool to ask them for clarification/input as directed.\n"
-        "3. Call `scraper_agent` to scrape local Saturday public events for that city.\n"
-        "   - If they didn't provide a specific URL, tell `scraper_agent` to scrape a mock URL like `http://mock.calendar/city_name` (e.g. `http://mock.calendar/seattle` or `http://mock.calendar/phoenix`).\n"
-        "   - CRITICAL: If the scraper_agent returns a response containing an `error` and a `recovery_instruction`, you MUST stop planning, notify the user, and call the `request_input` tool to ask them for input as directed.\n"
-        "4. Call the `filter_and_schedule_itinerary` tool directly using the weather condition and the list of events returned by `scraper_agent` under the user's budget.\n"
+        "3. Gather the Saturday public events list for the target city:\n"
+        "   - If a specific website URL was provided: Call `scraper_agent` to scrape it.\n"
+        "   - If NO URL was provided, but the city is Seattle or Phoenix: Call `scraper_agent` with a mock URL like `http://mock.calendar/seattle` or `http://mock.calendar/phoenix` to fetch the mock events.\n"
+        "   - If NO URL was provided and the city is NOT Seattle or Phoenix (for example, Palm Springs): Call the `search_agent` to find Saturday activities, local attractions, and events using Google Search.\n"
+        "   - If `scraper_agent` is called but fails (e.g. returns a MockCityNotSupported or connection error), fall back and call the `search_agent` to find local events via Google Search instead of halting.\n"
+        "4. Call the `filter_and_schedule_itinerary` tool directly using the weather condition and the list of events (obtained from scraper_agent or search_agent) under the user's budget.\n"
         "5. Call `planner_agent` to format the scheduled itinerary, handle ticket bookings if requested, and output the final response.\n\n"
         "CRITICAL EXECUTION RULE: You MUST execute all steps in sequence. Do NOT stop after step 2 or step 3. "
         "Under no circumstances should you return the weather forecast or scraped events list directly as the final response to the user. "
@@ -155,6 +169,7 @@ root_agent = Agent(
     tools=[
         AgentTool(weather_agent),
         AgentTool(scraper_agent),
+        AgentTool(search_agent),
         AgentTool(planner_agent),
         filter_and_schedule_itinerary,
         request_input,
