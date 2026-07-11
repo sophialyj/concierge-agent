@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.apps import App
@@ -19,82 +20,153 @@ from google.adk.apps.app import EventsCompactionConfig
 from google.adk.apps.llm_event_summarizer import LlmEventSummarizer
 from google.adk.models import Gemini
 from google.adk.plugins import LoggingPlugin
-from google.adk.tools import request_input
+from google.adk.tools import request_input, AgentTool
 from google.genai import types
 
 from .tools import (
     get_weather_forecast,
     scrape_public_events,
     filter_and_schedule_itinerary,
+    book_event_tickets,
 )
 
-instruction = """You are the Hyper-Local Itinerary Concierge Agent.
-Your goal is to plan a personalized Saturday itinerary for a user in their city under a given budget.
+async def before_agent_hooks(callback_context: CallbackContext) -> None:
+    """Pre-execution hook enforcing runtime safety policy and session state preferences."""
+    # 1. Safety Guardrail: check prompt for forbidden keywords
+    prompt_text = ""
+    if callback_context.user_content and callback_context.user_content.parts:
+        for part in callback_context.user_content.parts:
+            if hasattr(part, "text") and part.text:
+                prompt_text += part.text
+    prompt_text = prompt_text.lower()
+    
+    forbidden_terms = ["weapons", "illegal", "drugs", "hacks", "steal", "robbery", "violence"]
+    if any(term in prompt_text for term in forbidden_terms):
+        raise ValueError("Safety Policy Violation: The requested prompt contains restricted or unsafe keywords.")
 
-If the user does not specify a city or budget, you MUST default to their saved preferences:
-- Saved City: {user:preferred_city}
-- Saved Budget: ${user:preferred_budget}
-
-To plan the itinerary, you MUST follow these steps in order:
-1. If the user asks to plan a Saturday in a new city but does not specify which one, you MUST call the `request_input` tool with a hint asking them which city they have in mind.
-2. Retrieve the weather forecast for the target city using the `get_weather_forecast` tool.
-3. Scrape local public events for that city using the `scrape_public_events` tool. 
-   - If the user did not provide a specific URL, construct a mock URL like `http://mock.calendar/city_name` (e.g. `http://mock.calendar/seattle` or `http://mock.calendar/phoenix`) to scrape.
-4. Filter the scraped events and schedule a timeline using the `filter_and_schedule_itinerary` tool.
-   - Pass the exact events list from `scrape_public_events`.
-   - Pass the weather condition returned by `get_weather_forecast`.
-   - Pass the user's budget.
-5. Present the final itinerary to the user using this exact premium visual layout:
-
-### 🌤️ [City Name] Weather Card
-┌──────────────────────────────────────────┐
-│ Condition: [Condition Emoji] [Condition] │
-│ Temperature: [Min Temp]°C to [Max Temp]°C │
-│ Rain Probability: [Rain]%                 │
-└──────────────────────────────────────────┘
-*[Provide a brief comment on whether outdoor events are available based on the weather]*
-
-### 💰 Budget Status
-- **Spent**: $[Total Spent] / $[Total Budget] [ProgressBar using ASCII blocks e.g. ■■■■□□□□□□]
-- **Remaining**: $[Remaining Budget]
-
-### 📅 Saturday Timeline
-[Start Time] ──● **[Event Name]**
-             │ 📍 Location: [Location]
-             │ 💵 Cost: [Cost]
-             │ 🏷️ Type: [Indoor/Outdoor]
-             ↓
-[Next Start Time] ...
-
-### ℹ️ Filtered & Excluded Events
-*   *[Detail why any scraped events were excluded, e.g. due to budget cap or schedule overlap]*
-
-"""
-
-async def initialize_state(callback_context: CallbackContext) -> None:
-    """Initializes user-persistent preferences in the session state."""
+    # 2. Preferences state initialization
     state = callback_context.state
     if "user:preferred_city" not in state:
         state["user:preferred_city"] = "Seattle"
     if "user:preferred_budget" not in state:
         state["user:preferred_budget"] = 25.0
+    if "user:approved_bookings" not in state:
+        state["user:approved_bookings"] = []
 
+    # 3. Parse booking confirmation approvals from new user message
+    match = re.search(r'approve\s+booking\s+(.+)', prompt_text)
+    if match:
+        event_name = match.group(1).strip()
+        if event_name not in state["user:approved_bookings"]:
+            state["user:approved_bookings"].append(event_name)
+
+
+# =====================================================================
+# SPECIALIST AGENTS & STRATEGIC MODEL ROUTING
+# =====================================================================
+
+# 1. Weather Specialist Agent (Flash)
+weather_agent = Agent(
+    name="weather_agent",
+    model=Gemini(model="models/gemini-flash-latest"),
+    instruction=(
+        "You are the Weather Specialist Agent. Your only goal is to retrieve the weather forecast "
+        "for the upcoming Saturday in the given city using the `get_weather_forecast` tool and return the forecast result. "
+        "If the tool response contains an `error` field, return the error and `recovery_instruction` directly to the coordinator."
+    ),
+    tools=[get_weather_forecast],
+)
+
+# 2. Calendar Scraper Specialist Agent (Flash)
+scraper_agent = Agent(
+    name="scraper_agent",
+    model=Gemini(model="models/gemini-flash-latest"),
+    instruction=(
+        "You are the Calendar Scraper Specialist Agent. Your only goal is to scrape public Saturday "
+        "calendar events for the target city using the `scrape_public_events` tool and return the list of events. "
+        "If the tool response contains an `error` field, return the error and `recovery_instruction` directly to the coordinator."
+    ),
+    tools=[scrape_public_events],
+)
+
+# 3. Itinerary Planner & Booking Specialist Agent (Pro - Strategic Reasoning Model)
+planner_agent = Agent(
+    name="planner_agent",
+    model=Gemini(model="models/gemini-pro-latest"),
+    instruction=(
+        "You are the Itinerary Planner Specialist Agent. Your task is to take the raw scheduled itinerary "
+        "and weather data, format them into the required premium visual layout, and handle event ticket bookings "
+        "if requested by the user.\n\n"
+        "If the user asks to book tickets, call the `book_event_tickets` tool.\n"
+        "If `book_event_tickets` returns a status of 'requires_approval', you MUST immediately stop, output the exact "
+        "response message from the tool asking the user for confirmation, and wait for their reply. Do not generate a mock confirmation ID yourself.\n\n"
+        "Present the final itinerary to the user using this exact premium visual layout:\n\n"
+        "### 🌤️ [City Name] Weather Card\n"
+        "┌──────────────────────────────────────────┐\n"
+        "│ Condition: [Condition Emoji] [Condition] │\n"
+        "│ Temperature: [Min Temp]°C to [Max Temp]°C │\n"
+        "│ Rain Probability: [Rain]%                 │\n"
+        "└──────────────────────────────────────────┘\n"
+        "*[Provide a brief comment on whether outdoor events are available based on the weather]*\n\n"
+        "### 💰 Budget Status\n"
+        "- **Spent**: $[Total Spent] / $[Total Budget] [ProgressBar using ASCII blocks e.g. ■■■■□□□□□□]\n"
+        "- **Remaining**: $[Remaining Budget]\n\n"
+        "### 📅 Saturday Timeline\n"
+        "[Start Time] ──● **[Event Name]**\n"
+        "             │ 📍 Location: [Location]\n"
+        "             │ 💵 Cost: [Cost]\n"
+        "             │ 🏷️ Type: [Indoor/Outdoor]\n"
+        "             ↓\n"
+        "[Next Start Time] ...\n\n"
+        "### ℹ️ Filtered & Excluded Events\n"
+        "*   *[Detail why any scraped events were excluded, e.g. due to budget cap or schedule overlap]*\n"
+    ),
+    tools=[book_event_tickets],
+)
+
+# =====================================================================
+# ROOT COORDINATOR / ORCHESTRATOR AGENT (Flash)
+# =====================================================================
 root_agent = Agent(
     name="concierge_agent",
     model=Gemini(
-        model="gemini-flash-latest",
+        model="models/gemini-flash-latest",
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
-    instruction=instruction,
-    tools=[get_weather_forecast, scrape_public_events, filter_and_schedule_itinerary, request_input],
-    before_agent_callback=initialize_state,
+    instruction=(
+        "You are the Hyper-Local Itinerary Concierge Orchestrator Agent.\n"
+        "Your goal is to coordinate a personalized Saturday planning workflow under the user's budget.\n\n"
+        "If the user does not specify a city or budget, you MUST default to their saved preferences:\n"
+        "- Saved City: {user:preferred_city}\n"
+        "- Saved Budget: ${user:preferred_budget}\n\n"
+        "To plan the itinerary, you MUST delegate tasks to your specialized sub-agents and tools in this order:\n"
+        "1. If the user asks to plan a Saturday in a new city but does not specify which one, you MUST call the `request_input` tool with a hint asking them which city they have in mind.\n"
+        "2. Call `weather_agent` to fetch the Saturday weather forecast for the target city.\n"
+        "   - CRITICAL: If the weather_agent returns a response containing an `error` and a `recovery_instruction`, you MUST stop planning, notify the user, and call the `request_input` tool to ask them for clarification/input as directed.\n"
+        "3. Call `scraper_agent` to scrape local Saturday public events for that city.\n"
+        "   - If they didn't provide a specific URL, tell `scraper_agent` to scrape a mock URL like `http://mock.calendar/city_name` (e.g. `http://mock.calendar/seattle` or `http://mock.calendar/phoenix`).\n"
+        "   - CRITICAL: If the scraper_agent returns a response containing an `error` and a `recovery_instruction`, you MUST stop planning, notify the user, and call the `request_input` tool to ask them for input as directed.\n"
+        "4. Call the `filter_and_schedule_itinerary` tool directly using the weather condition and the list of events returned by `scraper_agent` under the user's budget.\n"
+        "5. Call `planner_agent` to format the scheduled itinerary, handle ticket bookings if requested, and output the final response.\n\n"
+        "CRITICAL EXECUTION RULE: You MUST execute all steps in sequence. Do NOT stop after step 2 or step 3. "
+        "Under no circumstances should you return the weather forecast or scraped events list directly as the final response to the user. "
+        "You must always call `filter_and_schedule_itinerary` and pass the results to the `planner_agent` in step 5, returning its output as the final result."
+    ),
+    tools=[
+        AgentTool(weather_agent),
+        AgentTool(scraper_agent),
+        AgentTool(planner_agent),
+        filter_and_schedule_itinerary,
+        request_input,
+    ],
+    before_agent_callback=before_agent_hooks,
 )
 
 # Configure Context Compaction to summarize older messages and keep tokens low
 compaction_config = EventsCompactionConfig(
     compaction_interval=15,
     overlap_size=2,
-    summarizer=LlmEventSummarizer(llm=Gemini(model="gemini-flash-latest")),
+    summarizer=LlmEventSummarizer(llm=Gemini(model="models/gemini-flash-latest")),
 )
 
 app = App(

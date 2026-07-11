@@ -15,9 +15,11 @@
 import datetime
 import re
 import urllib.parse
+from typing import List, Optional
 import requests
 from bs4 import BeautifulSoup
 from google.adk.tools import ToolContext
+from pydantic import BaseModel, Field
 
 # Standard WMO Weather codes for rain/snow/drizzle
 RAIN_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}
@@ -83,8 +85,55 @@ MOCK_HTML_PHOENIX = """
 </html>
 """
 
+# =====================================================================
+# STRONGLY TYPED PYDANTIC SCHEMAS FOR CONSTRAINING LLM I/O
+# =====================================================================
 
-def get_weather_forecast(city: str, tool_context: ToolContext) -> dict:
+class CalendarEvent(BaseModel):
+    name: str = Field(description="Name of the scheduled event.")
+    cost: float = Field(description="The event entry fee or ticket cost in dollars.")
+    is_outdoor: bool = Field(description="True if the event is outdoors; False if indoors.")
+    start_time: str = Field(description="The start time of the event (e.g. 9:00 AM).")
+    end_time: str = Field(description="The end time of the event (e.g. 11:00 AM).")
+    location: str = Field(description="Location venue of the event.")
+
+
+class WeatherForecastResult(BaseModel):
+    city: str = Field(description="The target city name.")
+    condition: Optional[str] = Field(default=None, description="The weather condition: 'Rain' or 'Clear'.")
+    temp_max: Optional[float] = Field(default=None, description="The maximum temperature of the day.")
+    temp_min: Optional[float] = Field(default=None, description="The minimum temperature of the day.")
+    rain_probability: Optional[int] = Field(default=None, description="Max rain probability percentage.")
+    date: Optional[str] = Field(default=None, description="The date of the weather forecast.")
+    error: Optional[str] = Field(default=None, description="Set to error code if geocoding or API query fails.")
+    recovery_instruction: Optional[str] = Field(default=None, description="Guided recovery instructions for the agent on how to handle the error.")
+
+
+class CalendarEventList(BaseModel):
+    events: Optional[List[CalendarEvent]] = Field(default=None, description="List of calendar events found.")
+    error: Optional[str] = Field(default=None, description="Set to error code if connection or parsing fails.")
+    recovery_instruction: Optional[str] = Field(default=None, description="Guided recovery instructions for the agent on how to handle the error.")
+
+
+class ItineraryScheduleResult(BaseModel):
+    weather_condition: str = Field(description="The weather condition used for scheduling.")
+    total_budget: float = Field(description="The total budget limit in dollars.")
+    total_spent: float = Field(description="The sum of costs of scheduled events.")
+    remaining_budget: float = Field(description="The remaining unused budget.")
+    schedule: List[CalendarEvent] = Field(description="List of scheduled sequential conflict-free events.")
+
+
+class BookingStatusResult(BaseModel):
+    status: str = Field(description="Status of the booking transaction: 'success' or 'requires_approval'.")
+    message: str = Field(description="Detailed response message for the user.")
+    confirmation_id: Optional[str] = Field(default=None, description="Confirmation transaction ID if successful.")
+
+
+# =====================================================================
+# REFACTORED TOOLS WITH STRUCTURED ERROR RECOVERY AND PYDANTIC TYPING
+# =====================================================================
+
+def get_weather_forecast(city: str, tool_context: ToolContext) -> WeatherForecastResult:
     """Retrieves the weather forecast for the upcoming Saturday in the given city.
 
     Args:
@@ -92,8 +141,7 @@ def get_weather_forecast(city: str, tool_context: ToolContext) -> dict:
         tool_context: The ADK context used to access and persist preferences.
 
     Returns:
-        A dictionary containing the weather condition (Rain/Clear), temperature,
-        precipitation probability, date, and city name.
+        A WeatherForecastResult containing the forecast details or a structured recovery error.
     """
     # Persist the user's preferred city across runs
     if tool_context and hasattr(tool_context, "state"):
@@ -122,14 +170,16 @@ def get_weather_forecast(city: str, tool_context: ToolContext) -> dict:
         except Exception:
             pass
 
-    # Fallbacks if geocoding fails
+    # If geocoding fails, return structured error for guided recovery instead of silently mocking
     if lat is None or lon is None:
-        if "seattle" in city_lower:
-            lat, lon = 47.6062, -122.3321
-        elif "phoenix" in city_lower:
-            lat, lon = 33.4484, -112.0740
-        else:
-            lat, lon = 47.6062, -122.3321
+        return {
+            "city": city,
+            "error": "CityResolutionError",
+            "recovery_instruction": (
+                f"The city '{city}' could not be resolved or geocoded. Please call the `request_input` tool "
+                "to ask the user to clarify the city name, verify its spelling, or provide a nearby major city."
+            )
+        }
 
     # 2. Query forecast daily endpoint
     forecast_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto"
@@ -138,11 +188,11 @@ def get_weather_forecast(city: str, tool_context: ToolContext) -> dict:
         if resp.status_code != 200:
             return {
                 "city": city,
-                "condition": "Clear",
-                "temp_max": 20.0,
-                "temp_min": 10.0,
-                "rain_probability": 10,
-                "date": "Saturday",
+                "error": "WeatherApiError",
+                "recovery_instruction": (
+                    "The Open-Meteo weather service returned a non-200 response. Please check your connection, "
+                    "or inform the user that weather data is temporarily unavailable and ask if they wish to proceed with 'Clear' weather assumptions."
+                )
             }
         
         data = resp.json()
@@ -170,27 +220,34 @@ def get_weather_forecast(city: str, tool_context: ToolContext) -> dict:
             return {
                 "city": city,
                 "condition": "Rain" if is_rain else "Clear",
-                "temp_max": temps_max[sat_idx],
-                "temp_min": temps_min[sat_idx],
-                "rain_probability": rain_probs[sat_idx],
+                "temp_max": float(temps_max[sat_idx]),
+                "temp_min": float(temps_min[sat_idx]),
+                "rain_probability": int(rain_probs[sat_idx]),
                 "date": times[sat_idx],
             }
-    except Exception:
-        pass
+    except Exception as e:
+        return {
+            "city": city,
+            "error": "WeatherConnectionError",
+            "recovery_instruction": (
+                f"Failed to connect to Open-Meteo weather API: {str(e)}. Please inform the user of the connection "
+                "failure and ask if they wish to proceed with a default 'Clear' weather assumption or try again later."
+            )
+        }
 
-    # Safe static fallback in case of connection failure
+    # Safe default if somehow indices are out of range
     return {
         "city": city,
-        "condition": "Rain" if "seattle" in city_lower else "Clear",
-        "temp_max": 18.0 if "seattle" in city_lower else 35.0,
-        "temp_min": 10.0 if "seattle" in city_lower else 25.0,
-        "rain_probability": 80 if "seattle" in city_lower else 10,
+        "condition": "Clear",
+        "temp_max": 20.0,
+        "temp_min": 10.0,
+        "rain_probability": 0,
         "date": "Saturday",
     }
 
 
-def scrape_public_events(url: str, city: str, tool_context: ToolContext) -> list:
-    """Scrapes a public event calendar HTML page using BeautifulSoup and returns a list of events.
+def scrape_public_events(url: str, city: str, tool_context: ToolContext) -> CalendarEventList:
+    """Scrapes a public event calendar HTML page using BeautifulSoup and returns calendar event listings.
 
     Args:
         url: The public URL of the calendar website to read.
@@ -198,27 +255,45 @@ def scrape_public_events(url: str, city: str, tool_context: ToolContext) -> list
         tool_context: The ADK context used to access and persist preferences.
 
     Returns:
-        A list of events found, where each event is a dictionary containing
-        'name', 'cost', 'is_outdoor', 'start_time', 'end_time', and 'location'.
+        A CalendarEventList containing the parsed events or a structured recovery error.
     """
     html_content = ""
     city_lower = city.lower()
     
-    # 1. Fetch live page or load mock data
+    # 1. Fetch live page or handle mock fallbacks
     if "mock" in url or not url.startswith("http"):
         if "seattle" in city_lower:
             html_content = MOCK_HTML_SEATTLE
-        else:
+        elif "phoenix" in city_lower:
             html_content = MOCK_HTML_PHOENIX
+        else:
+            return CalendarEventList(
+                error="MockCityNotSupported",
+                recovery_instruction=(
+                    f"Mock scraping is only supported for 'Seattle' or 'Phoenix'. City '{city}' is not supported. "
+                    "Please call `request_input` to ask the user for a valid public calendar URL for their city."
+                )
+            )
     else:
         try:
             resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                html_content = resp.text
-            else:
-                html_content = MOCK_HTML_SEATTLE if "seattle" in city_lower else MOCK_HTML_PHOENIX
-        except Exception:
-            html_content = MOCK_HTML_SEATTLE if "seattle" in city_lower else MOCK_HTML_PHOENIX
+            if resp.status_code != 200:
+                return CalendarEventList(
+                    error="CalendarFetchError",
+                    recovery_instruction=(
+                        f"Failed to fetch calendar page from '{url}' (HTTP status {resp.status_code}). "
+                        "Please ask the user for a different event calendar URL, or ask if they want to run on mock Seattle/Phoenix calendars to test."
+                    )
+                )
+            html_content = resp.text
+        except Exception as e:
+            return CalendarEventList(
+                error="CalendarConnectionError",
+                recovery_instruction=(
+                    f"A connection error occurred while fetching events from '{url}': {str(e)}. "
+                    "Please ask the user for a different event calendar URL, or ask if they want to run on mock Seattle/Phoenix calendars to test."
+                )
+            )
 
     # 2. BeautifulSoup parsing (Dynamic fallback structure parser)
     soup = BeautifulSoup(html_content, "html.parser")
@@ -252,14 +327,14 @@ def scrape_public_events(url: str, city: str, tool_context: ToolContext) -> list
             start_time = parts[0] if len(parts) > 0 else "9:00 AM"
             end_time = parts[1] if len(parts) > 1 else "5:00 PM"
             
-            events.append({
-                "name": name,
-                "cost": cost,
-                "is_outdoor": is_outdoor,
-                "start_time": start_time,
-                "end_time": end_time,
-                "location": location,
-            })
+            events.append(CalendarEvent(
+                name=name,
+                cost=cost,
+                is_outdoor=is_outdoor,
+                start_time=start_time,
+                end_time=end_time,
+                location=location,
+            ))
             
     # Fallback to simple table row parsing if no div classes match
     if not events:
@@ -279,31 +354,40 @@ def scrape_public_events(url: str, city: str, tool_context: ToolContext) -> list
                 start_time = parts[0].strip() if len(parts) > 0 else "9:00 AM"
                 end_time = parts[1].strip() if len(parts) > 1 else "5:00 PM"
                 
-                events.append({
-                    "name": name,
-                    "cost": cost,
-                    "is_outdoor": False,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "location": "Local Venue",
-                })
+                events.append(CalendarEvent(
+                    name=name,
+                    cost=cost,
+                    is_outdoor=False,
+                    start_time=start_time,
+                    end_time=end_time,
+                    location="Local Venue",
+                ))
                 
-    return events
+    if not events:
+        return CalendarEventList(
+            error="NoEventsFound",
+            recovery_instruction=(
+                "No events could be parsed from the calendar HTML. Please ask the user for a different URL, "
+                "or check that the URL contains list items, tables, or cards representing Saturday events."
+            )
+        )
+
+    return CalendarEventList(events=events)
 
 
 def filter_and_schedule_itinerary(
-    events: list, weather_condition: str, budget: float, tool_context: ToolContext
-) -> dict:
+    events: List[CalendarEvent], weather_condition: str, budget: float, tool_context: ToolContext
+) -> ItineraryScheduleResult:
     """Filters events based on weather and budget constraints and structures a sequential schedule.
 
     Args:
-        events: A list of dictionaries representing events.
+        events: A list of Pydantic CalendarEvent objects.
         weather_condition: The current forecast condition (e.g., 'Rain' or 'Clear').
         budget: The total budget limit for the Saturday itinerary in dollars.
         tool_context: The ADK context used to access and persist preferences.
 
     Returns:
-        A dictionary with the scheduled Saturday timeline and summary stats.
+        An ItineraryScheduleResult containing the filtered schedule and budget stats.
     """
     # Persist the user's preferred budget across runs
     if tool_context and hasattr(tool_context, "state"):
@@ -324,35 +408,29 @@ def filter_and_schedule_itinerary(
     # 1. Filter out outdoor events if it rains
     filtered_events = []
     for ev in events:
-        if not isinstance(ev, dict):
-            continue
-        if weather_condition.lower() == "rain" and ev.get("is_outdoor", False):
+        if weather_condition.lower() == "rain" and ev.is_outdoor:
             continue
         filtered_events.append(ev)
         
     # Sort events by start time
-    filtered_events.sort(key=lambda x: parse_time_safe(x.get("start_time", "9:00 AM"), 9))
+    filtered_events.sort(key=lambda x: parse_time_safe(x.start_time, 9))
 
     # 2. Schedule events sequentially, respecting the budget
     schedule = []
     total_cost = 0.0
     
     for ev in filtered_events:
-        try:
-            cost = float(ev.get("cost", 0.0))
-        except (ValueError, TypeError):
-            cost = 0.0
-
+        cost = ev.cost
         if total_cost + cost > budget:
             continue
             
-        ev_start = parse_time_safe(ev.get("start_time", "9:00 AM"), 9)
-        ev_end = parse_time_safe(ev.get("end_time", "5:00 PM"), 17)
+        ev_start = parse_time_safe(ev.start_time, 9)
+        ev_end = parse_time_safe(ev.end_time, 17)
         
         overlap = False
         for sch in schedule:
-            s_start = parse_time_safe(sch.get("start_time"), 9)
-            s_end = parse_time_safe(sch.get("end_time"), 17)
+            s_start = parse_time_safe(sch.start_time, 9)
+            s_end = parse_time_safe(sch.end_time, 17)
             
             if max(ev_start, s_start) < min(ev_end, s_end):
                 overlap = True
@@ -362,10 +440,59 @@ def filter_and_schedule_itinerary(
             schedule.append(ev)
             total_cost += cost
 
+    # Convert Pydantic event models to raw dicts for metrics checker compatibility
+    schedule_dicts = []
+    for ev in schedule:
+        schedule_dicts.append({
+            "name": ev.name,
+            "cost": ev.cost,
+            "is_outdoor": ev.is_outdoor,
+            "start_time": ev.start_time,
+            "end_time": ev.end_time,
+            "location": ev.location,
+        })
+
     return {
         "weather_condition": weather_condition,
         "total_budget": budget,
         "total_spent": total_cost,
         "remaining_budget": budget - total_cost,
-        "schedule": schedule,
+        "schedule": schedule_dicts,
     }
+
+
+def book_event_tickets(event_name: str, cost: float, tool_context: ToolContext) -> BookingStatusResult:
+    """Books tickets for a scheduled event. Requires explicit user confirmation.
+
+    Args:
+        event_name: Name of the event to book.
+        cost: Total booking fee in dollars.
+        tool_context: ADK tool context.
+
+    Returns:
+        A BookingStatusResult containing booking status, message, and confirmation ID.
+    """
+    if not tool_context or not hasattr(tool_context, "state"):
+        return BookingStatusResult(
+            status="requires_approval",
+            message=f"Booking {event_name} will cost ${cost:.2f}. Please confirm your approval by replying with 'approve booking {event_name}'."
+        )
+        
+    state = tool_context.state
+    approved_bookings = state.get("user:approved_bookings", [])
+    
+    # Check if the user has already approved booking this event in the chat history
+    if event_name.lower() not in [b.lower() for b in approved_bookings]:
+        return BookingStatusResult(
+            status="requires_approval",
+            message=f"Booking {event_name} will cost ${cost:.2f}. Please confirm your approval by replying with 'approve booking {event_name}'."
+        )
+        
+    # Transaction succeeded (high stakes action execution)
+    import uuid
+    conf_id = f"CONF-{uuid.uuid4().hex[:6].upper()}"
+    return BookingStatusResult(
+        status="success",
+        message=f"Successfully booked tickets for {event_name} (Spent: ${cost:.2f}).",
+        confirmation_id=conf_id
+    )
