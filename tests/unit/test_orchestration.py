@@ -151,3 +151,23 @@ async def test_feedback_logging_redaction() -> None:
         assert logged_payload["text"] == "Loved it! Reach me at [REDACTED_EMAIL] or [REDACTED_PHONE]."
         assert logged_payload["intent"] == "Plan a trip to Seattle."
         assert logged_payload["outcome"] == "Itinerary with Pike Place. My SSN is [REDACTED_SSN]."
+
+
+@pytest.mark.asyncio
+async def test_save_memories_callback() -> None:
+    # 8. Verify the memory saving callback runs as a background task
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+    from app.agent import save_memories_callback
+    
+    mock_ctx = MagicMock()
+    mock_ctx.add_session_to_memory = AsyncMock()
+    
+    # Run callback
+    await save_memories_callback(mock_ctx)
+    
+    # Wait briefly for background task to run
+    await asyncio.sleep(0.6)
+    
+    # Assert add_session_to_memory was invoked asynchronously
+    mock_ctx.add_session_to_memory.assert_called_once()

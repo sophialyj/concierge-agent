@@ -21,6 +21,7 @@ from google.adk.apps.llm_event_summarizer import LlmEventSummarizer
 from google.adk.models import Gemini
 from google.adk.plugins import LoggingPlugin
 from google.adk.tools import request_input, AgentTool, google_search
+from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from google.genai import types
 
 from .tools import (
@@ -136,6 +137,20 @@ search_agent = Agent(
     tools=[google_search],
 )
 
+async def save_memories_callback(callback_context: CallbackContext) -> None:
+    """Asynchronously saves the session history to long-term memory in a non-blocking background task."""
+    import asyncio
+    async def save_bg():
+        try:
+            # Sleep briefly to ensure response is fully sent and UI is updated without blocking
+            await asyncio.sleep(0.5)
+            await callback_context.add_session_to_memory()
+        except Exception:
+            pass
+    # Schedule the coroutine as a background task to prevent UI blocking
+    asyncio.create_task(save_bg())
+
+
 # =====================================================================
 # ROOT COORDINATOR / ORCHESTRATOR AGENT (Flash)
 # =====================================================================
@@ -167,6 +182,7 @@ root_agent = Agent(
         "You must always call `filter_and_schedule_itinerary` and pass the results to the `planner_agent` in step 5, returning its output as the final result."
     ),
     tools=[
+        PreloadMemoryTool(),
         AgentTool(weather_agent),
         AgentTool(scraper_agent),
         AgentTool(search_agent),
@@ -175,6 +191,7 @@ root_agent = Agent(
         request_input,
     ],
     before_agent_callback=before_agent_hooks,
+    after_agent_callback=save_memories_callback,
 )
 
 # Configure Context Compaction to summarize older messages and keep tokens low
